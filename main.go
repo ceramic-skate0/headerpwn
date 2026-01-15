@@ -1,5 +1,6 @@
 package main
 //go build headerpwn.go
+//Fork Note: Removed dependency on colors
 import (
 	"flag"
 	"fmt"
