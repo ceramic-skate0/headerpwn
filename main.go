@@ -1,5 +1,5 @@
 package main
-
+//go build headerpwn.go
 import (
 	"flag"
 	"fmt"
@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/fatih/color"
 	"io"
 	"math/rand"
 	"os"
@@ -28,6 +26,9 @@ func main() {
 	urlPtr := flag.String("url", "", "URL to make requests to")
 	headersFilePtr := flag.String("headers", "", "File containing headers for requests")
 	proxyPtr := flag.String("proxy", "", "Proxy server IP:PORT (e.g., 127.0.0.1:8080)")
+	userAgentPtr := flag.String("user-agent", "", "User-Agent (e.g. Mozilla/5.0)")
+	randomUserAgentPtr := flag.Bool("rua", false, "Use a random User-Agent for each request")
+	statcode := flag.Int("status-code", 200, "HTTP Response Status Code to target for hits.")
 	quietPtr := flag.Bool("q", false, "Suppress banner")
 	flag.Parse()
 	log.SetFlags(0)
@@ -42,7 +43,8 @@ func main() {
 	 / _ \/ -_) _ \/ _  / -_) __/ _ \ |/|/ / _ \
 	/_//_/\__/\_,_/\_,_/\__/_/ / .__/__,__/_//_/
 	                          /_/               
-    
+    Rebuild: go build main.go
+	Send to file: ./main.go > output.txt
 `)
 	}
 
@@ -54,6 +56,10 @@ func main() {
 	if *headersFilePtr == "" {
 		fmt.Println("Please provide a valid headers file using the -headers flag")
 		return
+	}
+
+	if *statcode != 200 {
+		log.Println("Searching for specific HTTP Status code and not 200. This gonna get wierd.")
 	}
 
 	headers, err := readHeadersFromFile(*headersFilePtr)
@@ -70,7 +76,7 @@ func main() {
 		go func(header string) {
 			defer wg.Done()
 
-			response, err := makeRequest(*urlPtr, header, *proxyPtr)
+			response, err := makeRequest(*urlPtr, header, *proxyPtr, *userAgentPtr, *randomUserAgentPtr)
 			if err != nil {
 				return
 			}
@@ -90,7 +96,7 @@ func main() {
 		close(results)
 	}()
 
-	printResults(results)
+	printResults(results,*statcode)
 }
 
 func readHeadersFromFile(filename string) ([]string, error) {
@@ -113,7 +119,7 @@ func readHeadersFromFile(filename string) ([]string, error) {
 	return headers, nil
 }
 
-func makeRequest(baseURL, header, proxy string) (*http.Response, error) {
+func makeRequest(baseURL, header, proxy string, userAgent string, randomUserAgent bool) (*http.Response, error) {
 	urlWithBuster := baseURL + "?cachebuster=" + generateCacheBuster()
 	headers := parseHeaders(header)
 
@@ -138,6 +144,23 @@ func makeRequest(baseURL, header, proxy string) (*http.Response, error) {
 		}
 		transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
 		client = &http.Client{Transport: transport}
+	}
+
+	if userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
+	}
+
+	if randomUserAgent == true {
+		userAgents, err := loadUserAgents("useragents.txt")
+
+		if err != nil {
+			fmt.Println("Error loading user agents:", err)
+			return nil, err
+		}
+
+		rand.Seed(time.Now().UnixNano())
+		randomAgent := userAgents[rand.Intn(len(userAgents))]
+		req.Header.Set("User-Agent", randomAgent)
 	}
 
 	response, err := client.Do(req)
@@ -170,30 +193,42 @@ func generateCacheBuster() string {
 	return string(b)
 }
 
-func printResults(results <-chan Result) {
-	red := color.New(color.FgRed).SprintFunc()
-	green := color.New(color.FgGreen).SprintFunc()
-	magenta := color.New(color.FgMagenta).SprintFunc()
-	yellow := color.New(color.FgYellow).SprintFunc()
-	cyan := color.New(color.FgCyan).SprintFunc()
+func printResults(results <-chan Result,statcodeToFind int) {
 
 	for result := range results {
-		statusColorFunc := red
-		if result.StatusCode == 200 {
-			statusColorFunc = green
-		}
-
-		statusOutput := statusColorFunc(fmt.Sprintf("[%d]", result.StatusCode))
-		contentLengthOutput := magenta(fmt.Sprintf("[CL: %d]", result.ContentLength))
-		headerOutput := cyan(fmt.Sprintf("[%s]", result.Header))
+		if result.StatusCode == statcodeToFind {
+		statusOutput := fmt.Sprintf("[Status-Code: %d]", result.StatusCode)
+		contentLengthOutput := fmt.Sprintf("[Content-Length: %d]", result.ContentLength)
+		headerOutput := fmt.Sprintf("[HTTP-HEADER: %s]", result.Header)
 
 		parsedURL, _ := url.Parse(result.URL)
 		query := parsedURL.Query()
 		query.Del("cachebuster")
 		parsedURL.RawQuery = query.Encode()
-		urlOutput := yellow(fmt.Sprintf("[%s]", parsedURL.String()))
+		urlOutput := fmt.Sprintf("[URL: %s]", parsedURL.String())
 
 		resultOutput := fmt.Sprintf("%s %s %s %s", statusOutput, contentLengthOutput, headerOutput, urlOutput)
 		fmt.Println(resultOutput)
+		}
 	}
+}
+
+func loadUserAgents(filePath string) ([]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var userAgents []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		userAgents = append(userAgents, scanner.Text())
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return userAgents, nil
 }
