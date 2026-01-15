@@ -1,6 +1,5 @@
 package main
 //go build headerpwn.go
-//Fork Note: Removed dependency on colors
 import (
 	"flag"
 	"fmt"
@@ -44,8 +43,7 @@ func main() {
 	 / _ \/ -_) _ \/ _  / -_) __/ _ \ |/|/ / _ \
 	/_//_/\__/\_,_/\_,_/\__/_/ / .__/__,__/_//_/
 	                          /_/               
-    Rebuild: go build main.go
-	Send to file: ./main.go > output.txt
+    Rebuild: go build headerpwn.go
 `)
 	}
 
@@ -200,15 +198,15 @@ func printResults(results <-chan Result,statcodeToFind int) {
 		if result.StatusCode == statcodeToFind {
 		statusOutput := fmt.Sprintf("[Status-Code: %d]", result.StatusCode)
 		contentLengthOutput := fmt.Sprintf("[Content-Length: %d]", result.ContentLength)
-		headerOutput := fmt.Sprintf("[HTTP-HEADER: %s]", result.Header)
+		headerOutput := fmt.Sprintf("[HTTP-Header: %s]", result.Header)
 
 		parsedURL, _ := url.Parse(result.URL)
 		query := parsedURL.Query()
 		query.Del("cachebuster")
 		parsedURL.RawQuery = query.Encode()
-		urlOutput := fmt.Sprintf("[URL: %s]", parsedURL.String())
-
-		resultOutput := fmt.Sprintf("%s %s %s %s", statusOutput, contentLengthOutput, headerOutput, urlOutput)
+		//urlOutput := fmt.Sprintf("[URL: %s]", parsedURL.String())
+		resultOutput := fmt.Sprintf("%s %s %s ", statusOutput, contentLengthOutput, headerOutput)
+		//resultOutput := fmt.Sprintf("%s %s %s %s", statusOutput, contentLengthOutput, headerOutput, urlOutput)
 		fmt.Println(resultOutput)
 		}
 	}
